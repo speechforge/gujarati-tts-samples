@@ -11,10 +11,10 @@ const METRICS = {
   sim_f5:      { label: "Sim. to F5",  arrow: "",   better: null,   fmt: 0, pct: true, rank: false, long: "Similarity to the untouched IndicF5 (F5-TTS) clip of the same sentence, in %, same recipe. Not ranked: closer to F5 is neither better nor worse, it shows how much the system changed the output." },
 };
 const BETTER_TEXT = { high: "Higher is better.", low: "Lower is better.", one: "Closest to 1.00 is best.", null: "Not ranked." };
-const ROLE = { gt: ["Ground truth", "gt"], indicf5: ["Baseline 1", "base"], lora: ["Baseline 2", "base"], adapter: ["Baseline 3", "base"], dsp: ["Baseline 4", "base"], reliability: ["Proposed", "prop"], mms: ["External TTS", "ext"], parler: ["External TTS", "ext"] };
-const NAME = { gt: "Real recording", indicf5: "IndicF5 / F5-TTS, untouched (B0)", lora: "IndicF5 + LoRA (B1)", adapter: "+ control adapter, uniform weights (B3)", dsp: "Deterministic DSP edit of B1's clip (B2)", reliability: "+ reliability-aware training (P)", mms: "MMS-TTS-guj (Meta)", parler: "Indic Parler-TTS" };
-const BARLBL = { gt: "Ground truth", indicf5: "Base 1 · IndicF5", lora: "Base 2 · +LoRA", adapter: "Base 3 · +adapter", dsp: "Base 4 · DSP edit", reliability: "Proposed · +reliab.", mms: "External · MMS-TTS", parler: "External · Parler" };
-const SHORT = { gt: "GT", indicf5: "Base 1", lora: "Base 2", adapter: "Base 3", dsp: "Base 4", reliability: "Proposed", mms: "MMS", parler: "Parler" };
+const ROLE = { gt: ["Ground truth", "gt"], indicf5: ["Baseline 1", "base"], lora: ["Baseline 2", "base"], adapter: ["Baseline 3", "base"], dsp: ["Baseline 4", "base"], guided: ["Baseline 5", "base"], reliability: ["Proposed", "prop"], mms: ["External TTS", "ext"], parler: ["External TTS", "ext"] };
+const NAME = { gt: "Real recording", indicf5: "IndicF5 / F5-TTS, untouched (B0)", lora: "IndicF5 + LoRA (B1)", adapter: "+ control adapter, uniform weights (B3)", dsp: "Deterministic DSP edit of B1's clip (B2)", guided: "PitchFlow-style guidance on B1 (B4, an approximation)", reliability: "+ reliability-aware training (P)", mms: "MMS-TTS-guj (Meta)", parler: "Indic Parler-TTS" };
+const BARLBL = { gt: "Ground truth", indicf5: "Base 1 · IndicF5", lora: "Base 2 · +LoRA", adapter: "Base 3 · +adapter", dsp: "Base 4 · DSP edit", guided: "Base 5 · guidance", reliability: "Proposed · +reliab.", mms: "External · MMS-TTS", parler: "External · Parler" };
+const SHORT = { gt: "GT", indicf5: "Base 1", lora: "Base 2", adapter: "Base 3", dsp: "Base 4", guided: "Base 5", reliability: "Proposed", mms: "MMS", parler: "Parler" };
 const CONDS = ["neutral", "pitch-1.5", "pitch+1.5", "energy-2.5", "energy+2.5", "rate0.88", "rate1.12"];
 const COND_LABEL = { "neutral": "Neutral", "pitch-1.5": "Pitch −1.5 st", "pitch+1.5": "Pitch +1.5 st", "energy-2.5": "Energy −2.5 dB", "energy+2.5": "Energy +2.5 dB", "rate0.88": "Rate ×0.88", "rate1.12": "Rate ×1.12" };
 const RAMP = ["#cde2fb", "#9ec5f4", "#6da7ec", "#3987e5", "#256abf", "#184f95", "#0d366b"];   // sequential blue
@@ -36,7 +36,7 @@ const dark = () => document.documentElement.dataset.theme === "dark" || (documen
 const head = m => METRICS[m].label + (METRICS[m].arrow ? " " + METRICS[m].arrow : "");
 const mtip = m => `${METRICS[m].long} ${BETTER_TEXT[METRICS[m].better]}`;
 const tagEl = k => h("span", { class: "tag " + ROLE[k][1], text: ROLE[k][0] });
-const TNAME = { gt: "Real recording", indicf5: "IndicF5 (B0)", lora: "+ LoRA (B1)", adapter: "+ adapter (B3)", dsp: "DSP edit (B2)", reliability: "+ reliability (P)", mms: "MMS-TTS-guj", parler: "Parler-TTS" };
+const TNAME = { gt: "Real recording", indicf5: "IndicF5 (B0)", lora: "+ LoRA (B1)", adapter: "+ adapter (B3)", dsp: "DSP edit (B2)", guided: "Guidance (B4)", reliability: "+ reliability (P)", mms: "MMS-TTS-guj", parler: "Parler-TTS" };
 const sysCell = (k, long) => h("td", { class: "sys" + (k === "reliability" ? " propcell" : "") }, tagEl(k), long ? (NAME[k] || k) : (TNAME[k] || k));
 
 function rampColor(t) {
@@ -209,14 +209,13 @@ function renderGroup(root, g, title, blurb) {
 
 // ---------- control requests
 function controlCard(r) {
-  const keys = ["indicf5", "lora", "adapter", "dsp", "reliability"];
+  const keys = ["indicf5", "lora", "adapter", "dsp", "guided", "reliability"];
   const hd = h("tr", {}, h("th", { text: "System" }), CONDS.map(c => h("th", { text: COND_LABEL[c] })));
   const body = h("tbody");
   for (const k of keys) {
     const tr = h("tr", { class: k === "reliability" ? "prop-row" : "" }, sysCell(k));
     for (const c of CONDS) {
-      let x = r.systems[k]?.[c]; const td = h("td");
-      if (!x && k === "dsp" && c === "neutral") x = r.systems.lora?.neutral;       // a neutral request leaves B1's clip untouched
+      const x = r.systems[k]?.[c], td = h("td");
       if (x) {
         td.append(playBtn(x.file, `${NAME[k]} ${COND_LABEL[c]}`));
         const a = c.startsWith("pitch") ? ["ach_pitch_st", " st"] : c.startsWith("energy") ? ["ach_energy_db", " dB"] : c.startsWith("rate") ? ["ach_rate", "×"] : null;
@@ -233,7 +232,7 @@ function controlCard(r) {
     h("div", { class: "overflow" }, h("table", {}, h("thead", {}, hd), body)));
 }
 function responseTable() {
-  const items = DATA.groups.controls, keys = ["indicf5", "lora", "adapter", "dsp", "reliability"];
+  const items = DATA.groups.controls, keys = ["indicf5", "lora", "adapter", "dsp", "guided", "reliability"];
   const axes = [["Pitch", "pitch-1.5", "pitch+1.5", "ach_pitch_st", 3.0], ["Energy", "energy-2.5", "energy+2.5", "ach_energy_db", 5.0], ["Rate", "rate0.88", "rate1.12", "ach_rate", 0.24]];
   const t = h("table", {}, h("thead", {}, h("tr", {}, h("th", { text: "System" }), axes.map(a => h("th", { class: "num", text: a[0] + " response ↑" })))));
   const body = h("tbody");
@@ -251,10 +250,10 @@ function responseTable() {
 function renderControls(root) {
   root.replaceChildren(
     h("h2", { text: "Control requests: does asking for a different pitch, loudness or speed change the speech?" }),
-    h("p", { text: "Each sentence was synthesized under seven requests, by the four IndicF5-based systems and, for the six non-neutral requests, by a deterministic signal-processing edit of Baseline 2\'s clip (Baseline 4). Pitch and energy are requested relative to the speaker's own reference level (for example +1.5 semitones above it). Under each play button is the value actually measured in that clip. MMS-TTS has no such controls and is not part of this test." }),
-    h("div", { class: "notice" }, h("p", { text: "Read this first: only Baseline 3 and the Proposed system were trained to take pitch and energy requests. In this study their controls did not work (also not with the extra acoustic loss that was tried): the measured pitch and energy hardly move with the request. The rate request has an effect, but it works through the generation length, for every system including untouched IndicF5. The only row that follows the pitch and energy requests is Baseline 4, which does not use a trained control at all: it edits Baseline 2's finished clip with a pitch shifter (WORLD vocoder, formants kept), a gain and a time stretch." })),
+    h("p", { text: "Each sentence was synthesized under seven requests, by the four IndicF5-based systems and by two ways of getting pitch and energy that use no trained control input: a deterministic signal-processing edit of Baseline 2\'s finished clip (Baseline 4) and, for the pitch and energy requests only, a guided sampler that steers Baseline 2\'s own sampling with classifiers on the noisy spectrogram (Baseline 5). Pitch and energy are requested relative to the speaker's own reference level (for example +1.5 semitones above it). Under each play button is the value actually measured in that clip. MMS-TTS has no such controls and is not part of this test." }),
+    h("div", { class: "notice" }, h("p", { text: "Read this first: only Baseline 3 and the Proposed system were trained to take pitch and energy requests. In this study their controls did not work (also not with the extra acoustic loss that was tried): the measured pitch and energy hardly move with the request. The rate request has an effect, but it works through the generation length, for every system including untouched IndicF5. The only rows that follow the pitch and energy requests are Baseline 4 and Baseline 5, which do not use a trained control input at all: Baseline 4 edits Baseline 2's finished clip with a pitch shifter (WORLD vocoder, formants kept), a gain and a time stretch; Baseline 5 (a PitchFlow-style classifier guidance, an approximation of that method) nudges the sample during generation towards the requested contour." })),
     h("h3", { text: "Response, averaged over the five sentences" }),
-    h("p", { class: "small", text: "Measured change divided by requested change between the low and high request. 1.00 = the request is fully followed, 0 = no response; higher is better. Pitch and energy are about 0 for every trained system; rate is about 0.5–0.7 even for the untouched model; the DSP edit (Baseline 4) is about 1." }),
+    h("p", { class: "small", text: "Measured change divided by requested change between the low and high request. 1.00 = the request is fully followed, 0 = no response; higher is better. Pitch and energy are about 0 for every trained system; rate is about 0.5–0.7 even for the untouched model; the DSP edit (Baseline 4) is about 1; the guided sampler (Baseline 5) responds to pitch and energy (it is not asked for rate)." }),
     responseTable(),
     h("h3", { text: "Listen" }),
     ...DATA.groups.controls.map(controlCard));
@@ -291,7 +290,7 @@ function renderArchitecture(root) {
       layer("IndicF5 / F5-TTS backbone (frozen)", "A flow-matching transformer (DiT) with the Vocos vocoder and the same sampler (16 steps) for every system. Untouched, it is the first baseline.", "Implemented", "indicf5", "337.1 M parameters"),
       layer("+ LoRA adaptation", "Rank-16 low-rank updates on the attention and feed-forward layers, trained on 2 hours of the speaker's speech with the backbone's own flow-matching loss. This is the ordinary adaptation baseline.", "Implemented", "lora", "+5.05 M trainable"),
       layer("+ control adapter", "A small network turns the 11 control inputs into a vector added to the time embedding, so it modulates all 22 transformer blocks; its last layer starts at zero, so switching it off gives back the backbone. Every control is kept in training with equal weight. It is the matched baseline that isolates the proposed mechanism.", "Implemented", "adapter", "+0.33 M trainable"),
-      layer("+ reliability-aware training (the proposed mechanism)", "Same adapter and size. During training each control measured from the target recording is kept with probability equal to its measured reliability (from two independent pitch estimators, clipping, availability) and otherwise replaced by an explicit 'missing' value. The training loss is unchanged. Two ablations (random dropout at the same average rate, shuffled reliabilities) are implemented and were being trained on the cluster (3 seeds each) when this page was last updated.", "Implemented", "reliability", "same 0.33 M"),
+      layer("+ reliability-aware training (the proposed mechanism)", "Same adapter and size. During training each control measured from the target recording is kept with probability equal to its measured reliability (from two independent pitch estimators, clipping, availability) and otherwise replaced by an explicit 'missing' value. The training loss is unchanged. Two ablations (random dropout at the same average rate, shuffled reliabilities) were run with three seeds each: neither moves the controls (see Contribution 1).", "Implemented", "reliability", "same 0.33 M"),
       layer("Auxiliary acoustic loss (planned part of Contribution 1)", "A frozen predictor of pitch and energy (trained on the 2-hour subset only; it agrees with two independent extractors at r ≥ 0.98) checks the model's estimate of the final mel against the requested controls, weighted by reliability. It was tried at three weights for Baseline 3 and the Proposed system (6 runs). The controls still did not respond (pitch ≤ 0.01, energy ≤ 0.11; gate 0.30).", "Built, no gain", "reliability", ""),
       layer("Operating envelope (Contribution 2)", "Choose supported control strengths (0, 0.25, 0.5, 1 of the requested change) from calibration data, flag unsupported requests and count them as failures, never silently changing the request; the same calibration is applied to Baseline 3, the Proposed system and the DSP edit. The machinery is built and tested; its results come from the confirmatory evaluation, which was still running when this page was last updated.", "Built, results pending", null, ""),
     ),
@@ -312,19 +311,19 @@ function renderArchitecture(root) {
       [tagEl("gt"), "–", "Real recording of the same sentence", "Reference for every measurement"],
       [tagEl("indicf5"), "B0", "IndicF5 / F5-TTS, no adaptation", "Run"],
       [tagEl("lora"), "B1", "IndicF5 + LoRA: ordinary adaptation", "Run"],
-      [tagEl("dsp"), "B2", "Deterministic pitch, rate and energy editing of B1's output (shown on the Control requests tab)", "Run: pitch and energy response about 1.00, rate 0.95; speaker cosine −0.04"],
+      [tagEl("dsp"), "B2", "Deterministic pitch, rate and energy editing of B1's output (shown on the Control requests tab)", "Run, three seeds: pitch and energy response about 1.00, rate 0.95; speaker cosine −0.04 against B1"],
       [tagEl("adapter"), "B3", "Same control inputs and size as the proposal, uniform weights, no reliability", "Run"],
-      [h("span", { class: "tag base", text: "Baseline" }), "B4", "Closest recent published control method: PitchFlow-style classifier guidance on B1 (Interspeech 2024; an approximation of it)", "Chosen by the novelty audit; being built"],
+      [tagEl("guided"), "B4", "Closest recent published control method: PitchFlow-style classifier guidance on B1 (Interspeech 2024; an approximation of it), pitch and energy only", "Built and calibrated on reserved sentences; shown on the Control requests tab; its three-seed confirmation was running when this page was last updated"],
       [tagEl("reliability"), "P", "B3 plus reliability-aware training", "Run (also with the auxiliary loss: no gain); envelope results pending"],
       [tagEl("mms"), "–", "MMS-TTS-guj, a separate Gujarati TTS model", "Run, for reference only"],
     ], r => r[1] === "P" ? "prop-row" : ""),
     h("h2", { text: "Contributions and what the evidence says" }),
     h("p", { text: "The six candidate contributions of the research plan. Only a method contribution needs to beat a baseline; the others are evaluation or reproducibility results. Status is stated as of this page's data." }),
     simpleTable(["#", "Contribution", "Type", "Status", "Evidence so far"], [
-      ["Contribution 1", "Measurement-aware conditioning: use the reliability of pitch and energy estimates when training the small adapter", "Method", "Mechanism and auxiliary loss built and tested", "Not supported. Both Baseline 3 and the Proposed system leave the controls at about 0 response (gate 0.30), across 4 training settings and 3 auxiliary-loss weights; the largest Proposed-minus-Baseline-3 gap is 0.06. Three-seed confirmation and the two ablations were running when this page was last updated."],
+      ["Contribution 1", "Measurement-aware conditioning: use the reliability of pitch and energy estimates when training the small adapter", "Method", "Mechanism and auxiliary loss built and tested", "Not supported, and confirmed: in the three-seed study on 40 fresh sentences Baseline 3 reaches pitch / energy response −0.005 / 0.013, the Proposed system 0.001 / 0.002, random dropout 0.007 / 0.044 and shuffled reliability 0.022 / 0.081 (gate 0.30); the Proposed system is not better than Baseline 3 (energy −0.011, lift −0.022). The data-size sweep (0.5 / 2 / 5 hours) was still running."],
       ["Contribution 2", "Empirical operating envelope: supported control strengths with pronunciation and speaker checks", "Method", "Built; results pending", "Calibration and lookup machinery tested; the measurements (B2, B3, P at four strengths, range clipping) were still running."],
       ["Contribution 3", "Matched-input intervention protocol: measure the intended change and the unintended changes with identical text, reference and seed", "Evaluation", "Built and used", "Used in the pilot and on this page's Control requests tab. It separates a control that works (the DSP edit, about 1.00) from controls that do not (trained adapters, about 0; rate 0.5–0.7 through length, even for untouched IndicF5)."],
-      ["Contribution 4", "Controlled Gujarati-centred study of data size, second-language transfer and speakers", "Empirical", "Partly done", "Gujarati 2-hour pilot, a 12-run hyper-parameter pilot and a 6-run auxiliary-loss pilot done; three-seed confirmation running. Hindi, the 0.5 / 2 / 5 hour sweep and more speakers (only two exist) are not done."],
+      ["Contribution 4", "Controlled Gujarati-centred study of data size, second-language transfer and speakers", "Empirical", "Partly done", "Gujarati 2-hour pilot, a 12-run hyper-parameter pilot, a 6-run auxiliary-loss pilot and the three-seed confirmation are done; the 0.5 / 2 / 5 hour sweep and a sealed-test run were in progress. Hindi was not built (no Hindi aligner or phoneme front end here) and only two speakers exist."],
       ["Contribution 5", "Reproducible automatic evaluation: real-speech ASR check, independent extractors, uncertainty, failure accounting", "Evaluation", "Built", "Recognizer chosen on real dev speech (whisper-gujarati-medium, 5.9% character error); speaker embedding, audit extractors and bootstrap intervals in place. No listening test."],
       ["Contribution 6", "Restartable experiment package: checkpoints, logs, gallery, dashboard, traceable paper numbers", "Reproducibility", "Built; paper not written", "Kill and resume drill passed on the real model; per-epoch audio gallery and dashboard exist. Manuscript and fresh-checkout reproduction still to do."],
     ]),
